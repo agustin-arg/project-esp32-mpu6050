@@ -17,22 +17,22 @@ class SystemController:
         for key, config in self.actuators_config.items():
             pin = config['pin']
             type = config['type']
-            clasificacion = config['clasificacion']
             nombre = f"{type}_{clasificacion}"
 
+            # Crear los objetos actuadores
             if type == 'Pin':
                 setattr(self, nombre, Pin(pin, Pin.OUT))
             elif type == 'PWM':
                 setattr(self, nombre, PWM(Pin(pin)))
-            # Podés agregar más tipos como 'motor', 'servo', etc.
+            # Se puede agregar más tipos como 'servo', 'motor', etc.
 
-    def test_actuadores(self):
+    def test_actuators(self):
         print("Probando actuadores...")
 
         for key, config in self.actuators_config.items():
-            tipo = config['tipo']
+            type = config['type']
             clasificacion = config['clasificacion']
-            nombre = f"{tipo}_{clasificacion}"
+            nombre = f"{type}_{clasificacion}"
             actuator = getattr(self, nombre)
 
             print(f"Probando {nombre}...")
