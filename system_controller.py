@@ -3,47 +3,49 @@ from time import sleep
 from mpu6050_sensor import accel
 
 class SystemController:
-    def __init__(self, sensores: dict, actuadores: dict):
+    def __init__(self, sensors: dict, actuators: dict):
         '''
+        sensor = {'scl': Pin, 'sda': Pin}
         actuadores = {'a1': {'pin': 15, 'tag': 'led_rojo', 'type': 'Pin'}}
         '''
-        self.sensores = sensores
-        self.actuadores_config = actuadores 
-        self.setup_actuadores()
+        self.sensors = I2C(sensors['scl'], sensors['sda'])
+        self.mpu = accel(self.sensors)
+        self.actuators_config = actuators 
+        self.setup_actuators()
 
-    def setup_actuadores(self):
-        for key, config in self.actuadores_config.items():
+    def setup_actuators(self):
+        for key, config in self.actuators_config.items():
             pin = config['pin']
-            tipo = config['tipo']
+            type = config['type']
             clasificacion = config['clasificacion']
-            nombre = f"{tipo}_{clasificacion}"
+            nombre = f"{type}_{clasificacion}"
 
-            if tipo == 'Pin':
+            if type == 'Pin':
                 setattr(self, nombre, Pin(pin, Pin.OUT))
-            elif tipo == 'PWM':
+            elif type == 'PWM':
                 setattr(self, nombre, PWM(Pin(pin)))
             # Podés agregar más tipos como 'motor', 'servo', etc.
 
     def test_actuadores(self):
         print("Probando actuadores...")
 
-        for key, config in self.actuadores_config.items():
+        for key, config in self.actuators_config.items():
             tipo = config['tipo']
             clasificacion = config['clasificacion']
             nombre = f"{tipo}_{clasificacion}"
-            dispositivo = getattr(self, nombre)
+            actuator = getattr(self, nombre)
 
             print(f"Probando {nombre}...")
 
-            if isinstance(dispositivo, PWM):
-                dispositivo.freq(659)
-                dispositivo.duty(500)
+            if isinstance(actuator, PWM):
+                actuator.freq(659)
+                actuator.duty(500)
                 sleep(0.15)
-                dispositivo.duty(0)
-            elif hasattr(dispositivo, 'value'):
-                dispositivo.value(1)
+                actuator.duty(0)
+            elif hasattr(actuator, 'value'):
+                actuator.value(1)
                 sleep(0.2)
-                dispositivo.value(0)
+                actuator.value(0)
 
         print("Prueba completa.")
 

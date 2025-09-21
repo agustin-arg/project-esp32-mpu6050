@@ -1,12 +1,18 @@
-from system_controller import mpu6050
+from system_controller import SystemController
 from time import sleep
-
-mpu = SystemController(pin_red = 17, pin_green = 16, pin_blue = 4, 
-        pin_buzzer = 25, pin_scl = 22, pin_sda = 21)
+sensors = {'scl': 22, 'sda': 21}
+actuators = {
+            'a1': {'pin': 15, 'tag': 'led_rojo', 'type': 'Pin'},
+            'a1': {'pin': 15, 'tag': 'led_rojo', 'type': 'Pin'},
+            'a1': {'pin': 15, 'tag': 'led_rojo', 'type': 'Pin'},
+            'a1': {'pin': 15, 'tag': 'led_rojo', 'type': 'Pin'},
+             }
+System = SystemController(sensors, actuators)
 while True:
     data = {
-        'GyX': mpu.gyx(), 'GyY': mpu.gyz(), 'GyX': mpu.gyy(), 'Tmp': mpu.temp(),
-         'AcZ': mpu.acz(), 'AcY': mpu.acy(), 'AcX': mpu.acx()
+        'GyX': System.gyx(), 'GyY': System.gyz(), 'GyX': System.gyy(),
+        'AcZ': System.acz(), 'AcY': System.acy(), 'AcX': System.acx(),
+        'Tmp': System.temp()
          }
     print(data)
     sleep(1)
