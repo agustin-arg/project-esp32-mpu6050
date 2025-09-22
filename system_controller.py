@@ -6,49 +6,62 @@ class SystemController:
     def __init__(self, sensors: dict, actuators: dict):
         '''
         sensor = {'scl': Pin, 'sda': Pin}
-        actuadores = {'a1': {'pin': 15, 'tag': 'led_rojo', 'type': 'Pin'}}
+        actuadores = {'a1': {'pin': 15, 'tag': 'led_red', 'type': 'Pin'}}
         '''
-        self.sensors = I2C(sensors['scl'], sensors['sda'])
+        self.sensors = I2C(scl= Pin(sensors['scl']), sda = Pin(sensors['sda']))
         self.mpu = accel(self.sensors)
-        self.actuators_config = actuators 
+        self.actuators_config = actuators
+        self.actuators = {'Pin': {}, 'PWM': {}}
         self.setup_actuators()
 
     def setup_actuators(self):
         for key, config in self.actuators_config.items():
             pin = config['pin']
             type = config['type']
-            nombre = f"{type}_{clasificacion}"
-
-            # Crear los objetos actuadores
+            tag = config['tag']
+            
             if type == 'Pin':
-                setattr(self, nombre, Pin(pin, Pin.OUT))
+                control_pin = Pin(pin, Pin.OUT)
+                self.actuators['Pin'][key] = {
+                    'actuator': control_pin,
+                    'tag': tag,
+                    'power': 1
+                }
             elif type == 'PWM':
-                setattr(self, nombre, PWM(Pin(pin)))
-            # Se puede agregar más tipos como 'servo', 'motor', etc.
+                control_pwm = PWM(Pin(pin), freq= 500, duty_u16= 0)
+                self.actuators['PWM'][key] = {
+                    'actuator': control_pwm,
+                    'tag': tag,
+                    'power': 1
+                }
 
-    def test_actuators(self):
-        print("Probando actuadores...")
-
-        for key, config in self.actuators_config.items():
-            type = config['type']
-            clasificacion = config['clasificacion']
-            nombre = f"{type}_{clasificacion}"
-            actuator = getattr(self, nombre)
-
-            print(f"Probando {nombre}...")
-
-            if isinstance(actuator, PWM):
-                actuator.freq(659)
-                actuator.duty(500)
-                sleep(0.15)
-                actuator.duty(0)
-            elif hasattr(actuator, 'value'):
-                actuator.value(1)
-                sleep(0.2)
-                actuator.value(0)
-
-        print("Prueba completa.")
-
+    def test_actuators(self, rang = 1):
+        for i in range(1, rang):
+            print(f"Prueba N° {i} actuadores...")
+        
+            for actuator_type, actuators_dict in self.actuators.items():
+                print(f"→ Probando {actuator_type}:")
+                
+                for key, actuator_info in actuators_dict.items():
+                    actuator_obj = actuator_info['actuator']
+                    tag = actuator_info['tag']
+                    
+                    print(f"  Probando {key} ({tag})...")
+                    
+                    if actuator_type == 'PWM':
+                        actuator_obj.freq(659)
+                        actuator_obj.duty(500)
+                        sleep(0.15)
+                        actuator_obj.duty(0)
+                    elif actuator_type == 'Pin':
+                        actuator_obj.value(1)
+                        sleep(0.5)
+                        actuator_obj.value(0)
+                        sleep(0.5)
+                    
+                    sleep(0.1)
+            
+            print("Prueba completa.")
     
     def temp(self):
         '''
@@ -86,5 +99,3 @@ class SystemController:
         Devuelve la aceleración en el eje Y en g.
         '''
         return round(self.mpu.get_values()['AcY']*2/32767, 2)
-
-    
