@@ -9,8 +9,9 @@ actuators = {
              }
 #los nombres de los controladores (a1, a2, a3...) no se deben repetir
 system = SystemController(sensors, actuators)
-
-system.test_actuators(4)
+system.test_actuators()
+system.trigger_stability_alert()
+system.actuator_stability('a3', 'a2', 'a1')
 while True:
     data = {
         'GyX': system.gyx(), 'GyY': system.gyz(), 'GyX': system.gyy(),
@@ -18,4 +19,5 @@ while True:
         'Tmp': system.temp()
          }
     print(data)
+    system.trigger_stability_alert()
     sleep(1)

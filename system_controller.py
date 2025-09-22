@@ -73,8 +73,8 @@ class SystemController:
             print("No se añadieron actuadores de estabilidad.")
             
     def test_actuators(self, rang = 1):
-        for i in range(1, rang):
-            print(f"Prueba N° {i} actuadores...")
+        for i in range(0, rang):
+            print(f"Prueba N° {i+1} actuadores...")
         
             for actuator_type, actuators_dict in self.actuators.items():
                 print(f"→ Probando {actuator_type}:")
