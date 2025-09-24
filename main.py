@@ -1,23 +1,26 @@
 from system_controller import SystemController
-from time import sleep
+import utime
+
+
+#mpu = MPU6050(bus = 0, sda = 21, scl= 22, ofs = (1794, -3335, 1252, 92, -18, 12))
+
+#if mpu.passed_self_test:
+    #while True:
+        #ax, ay, az, gx, gy, gz = mpu.data
+        #print(ax, ay, az, gx, gy, gz)
+
 sensors = {'scl': 22, 'sda': 21}
 actuators = {
-            'a1': {'pin': 17, 'tag': 'led_red', 'type': 'Pin'},
-            'a2': {'pin': 16, 'tag': 'led_green', 'type': 'Pin'},
-            'a3': {'pin': 4, 'tag': 'led_blue', 'type': 'Pin'},
-            'a4': {'pin': 25, 'tag': 'buzzer_1', 'type': 'PWM'},
+            'a1': {'pin': 32, 'tag': 'led_red', 'type': 'Pin'},
+            'a2': {'pin': 33, 'tag': 'led_green', 'type': 'Pin'},
+            'a3': {'pin': 25, 'tag': 'led_blue', 'type': 'Pin'},
+            'a4': {'pin': 27, 'tag': 'buzzer_1', 'type': 'PWM'},
              }
-#los nombres de los controladores (a1, a2, a3...) no se deben repetir
 system = SystemController(sensors, actuators)
 system.test_actuators()
-system.trigger_stability_alert()
-system.actuator_stability('a3', 'a2', 'a1')
+system.config_actuator_stability('a2')
+system.config_actuator_alert('a4', 'a1')
+
 while True:
-    data = {
-        'GyX': system.gyx(), 'GyY': system.gyz(), 'GyX': system.gyy(),
-        'AcZ': system.acz(), 'AcY': system.acy(), 'AcX': system.acx(),
-        'Tmp': system.temp()
-         }
-    print(data)
-    system.trigger_stability_alert()
+    system.alert_upright_position()
     sleep(1)
