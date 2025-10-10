@@ -126,7 +126,7 @@ class PostureCorrector:
         # estado inicial del sistema (1 = encendido)
         self.ble.gatts_write(self.system_handle, struct.pack('<B', 1))
 
-        self.adv_payload = self._adv_payload(name='Posture1', services=[_POSTURE_SERVICE_UUID])
+        self.adv_payload = self._adv_payload(name='Posture', services=[_POSTURE_SERVICE_UUID])
         self.start_advertising()
         self.conn_handle = None
 
