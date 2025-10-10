@@ -19,8 +19,7 @@ actuators = {
 system = SystemController(sensors, actuators)
 system.test_actuators()
 system.config_actuator_stability('a2')
-system.config_actuator_alert('a4', 'a1')
+system.config_actuator_alert('a1', 'a4')
 
 while True:
-    system.alert_upright_position()
-    sleep(1)
+    system.alert_upright_position(75)

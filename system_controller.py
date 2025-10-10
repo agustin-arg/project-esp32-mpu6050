@@ -241,7 +241,7 @@ class SystemController:
         
         print("Alerta de estabilidad completada.")
     
-    def alert_upright_position(self):
+    def alert_upright_position(self, angle = 85):
         if self.mpu.passed_self_test:
             print("Sensor listo.")
             # Accedemos a la propiedad .angles [1, 2]
@@ -256,10 +256,11 @@ class SystemController:
             # Comprobamos si el valor absoluto de roll o pitch es mayor a 85.
             # Usamos 85 en lugar de 90 porque las lecturas del sensor pueden tener
             # un pequeño margen de error o ruido [10].
-            if abs(roll) > 85 or abs(pitch) > 85:
-                print("¡¡Sensor en posición VERTICAL (90 grados)!!")
-                self.alert_sequence()
-            else:
+            if abs(roll) > angle or abs(pitch) > angle:
+                print("Posición vertical estable (90 grados)")
                 self.stability_sequence()
+            else:
+                print("¡¡Sensor no se encuentra en posición VERTICAL (90 grados)!!")
+                self.alert_sequence()
         else:
             print("El auto-test del sensor falló.")
