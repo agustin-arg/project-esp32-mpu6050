@@ -60,6 +60,8 @@ _BUZZER_CONTROL_CHAR_UUID = ubluetooth.UUID("00002a1e-0000-1000-8000-00805f9b34f
 _VIBRATOR_CONTROL_CHAR_UUID = ubluetooth.UUID("00002a1f-0000-1000-8000-00805f9b34fb")
 _LEDS_CONTROL_CHAR_UUID = ubluetooth.UUID("00002a20-0000-1000-8000-00805f9b34fb")
 _NOTIFY_CONTROL_CHAR_UUID = ubluetooth.UUID("00002a21-0000-1000-8000-00805f9b34fb")
+# nuevo UUID para control de encendido/apagado del sistema
+_SYSTEM_CONTROL_CHAR_UUID = ubluetooth.UUID("00002a22-0000-1000-8000-00805f9b34fb")
 
 class PostureCorrector:
     def __init__(self):
@@ -83,6 +85,9 @@ class PostureCorrector:
         self.leds_enabled = True
         self.notifications_enabled = True
 
+        # nuevo: control de sistema (on/off). Cuando False no hace controles continuos pero acepta writes.
+        self.system_enabled = True
+
         # Flag para pedir calibración desde el IRQ
         self._calibrate_request = False
         self._calibrating = False  # para evitar reentradas
@@ -102,12 +107,15 @@ class PostureCorrector:
         vibrator_char = (_VIBRATOR_CONTROL_CHAR_UUID, ubluetooth.FLAG_READ | ubluetooth.FLAG_WRITE,)
         leds_char = (_LEDS_CONTROL_CHAR_UUID, ubluetooth.FLAG_READ | ubluetooth.FLAG_WRITE,)
         notify_char = (_NOTIFY_CONTROL_CHAR_UUID, ubluetooth.FLAG_READ | ubluetooth.FLAG_WRITE,)
+        # nuevo: characteristic para encender/apagar sistema
+        system_char = (_SYSTEM_CONTROL_CHAR_UUID, ubluetooth.FLAG_READ | ubluetooth.FLAG_WRITE,)
 
-        posture_service = (_POSTURE_SERVICE_UUID, (status_char, threshold_char, calibrate_char, buzzer_char, vibrator_char, leds_char, notify_char),)
+        posture_service = (_POSTURE_SERVICE_UUID, (status_char, threshold_char, calibrate_char, buzzer_char,
+                                                   vibrator_char, leds_char, notify_char, system_char),)
         
         handles = self.ble.gatts_register_services((posture_service,))
         (self.status_handle, self.threshold_handle, self.calibrate_handle, self.buzzer_handle, 
-         self.vibrator_handle, self.leds_handle, self.notify_handle) = handles[0]
+         self.vibrator_handle, self.leds_handle, self.notify_handle, self.system_handle) = handles[0]
         
         # Valores iniciales
 #         self.ble.gatts_write(self.threshold_handle, struct.pack('<B', int(self.threshold_angle)))
@@ -115,6 +123,8 @@ class PostureCorrector:
         self.ble.gatts_write(self.vibrator_handle, struct.pack('<B', 1))
         self.ble.gatts_write(self.leds_handle, struct.pack('<B', 1))
         self.ble.gatts_write(self.notify_handle, struct.pack('<B', 1))
+        # estado inicial del sistema (1 = encendido)
+        self.ble.gatts_write(self.system_handle, struct.pack('<B', 1))
 
         self.adv_payload = self._adv_payload(name='Posture1', services=[_POSTURE_SERVICE_UUID])
         self.start_advertising()
@@ -138,8 +148,14 @@ class PostureCorrector:
     def ble_irq(self, event, data):
         # Manejo mínimo de eventos BLE
         if event == 1: # _IRQ_CENTRAL_CONNECT
-            self.conn_handle, _, _ = data
-            print(f"Conectado: {self.conn_handle}")
+            # data == (conn_handle, addr_type, addr)
+            conn_handle, addr_type, addr = data
+            self.conn_handle = conn_handle
+            if addr:
+                mac = ':'.join('{:02X}'.format(b) for b in addr)
+                print(f"Conectado: {mac}")
+            else:
+                print(f"Conectado: {self.conn_handle}")
             self.led_blue.on()
         elif event == 2: # _IRQ_CENTRAL_DISCONNECT
             print("Desconectado.")
@@ -156,7 +172,7 @@ class PostureCorrector:
                 state = False
 
             if value_handle == self.threshold_handle:
-                # si querés soportar valores >255, usar otro formato en el cliente
+                # aceptar cambio de umbral siempre
                 self.threshold_angle = float(struct.unpack('<B', value[:1])[0])
                 print(f"Nuevo umbral: {self.threshold_angle} grados")
             elif value_handle == self.calibrate_handle:
@@ -166,15 +182,57 @@ class PostureCorrector:
             elif value_handle == self.buzzer_handle:
                 self.buzzer_enabled = state
                 print(f"Buzzer: {'activado' if state else 'desactivado'}")
+                # aplicar cambio inmediato si el sistema está encendido
+                if not self.system_enabled:
+                    # si el sistema está apagado queremos que las escrituras sigan pudiendo cambiar el flag,
+                    # pero en estado apagado los actuadores deben permanecer apagados físicamente
+                    self.buzzer.duty(0)
             elif value_handle == self.vibrator_handle:
                 self.vibrator_enabled = state
                 print(f"Vibrador: {'activado' if state else 'desactivado'}")
+                if not self.system_enabled:
+                    try:
+                        self.vibrator.off()
+                    except Exception:
+                        try:
+                            self.vibrator.value(0)
+                        except Exception:
+                            pass
             elif value_handle == self.leds_handle:
                 self.leds_enabled = state
                 print(f"LEDs de estado: {'activados' if state else 'desactivados'}")
+                if not self.system_enabled:
+                    self.led_red.off()
+                    self.led_green.off()
+                    self.led_blue.on()
             elif value_handle == self.notify_handle:
                 self.notifications_enabled = state
                 print(f"Notificaciones BLE: {'activadas' if state else 'desactivadas'}")
+            elif value_handle == self.system_handle:
+                # controlar encendido/apagado del monitoreo continuo
+                self.system_enabled = state
+                print(f"Sistema {'encendido' if state else 'apagado'}")
+                if not state:
+                    # apagar actuadores inmediatamente al apagar el sistema
+                    try:
+                        self.buzzer.duty(0)
+                    except Exception:
+                        pass
+                    try:
+                        self.vibrator.off()
+                    except Exception:
+                        try:
+                            self.vibrator.value(0)
+                        except Exception:
+                            pass
+                    self.led_red.off()
+                    self.led_green.off()
+                    # LED azul debe indicar estado BLE activo
+                    self.led_blue.on()
+                try:
+                    self.ble.gatts_write(self.system_handle, struct.pack('<B', 1 if state else 0))
+                except Exception:
+                    pass
 
     def calculate_pitch(self, accel_data):
         x, y, z = accel_data['x'], accel_data['y'], accel_data['z']
@@ -219,23 +277,31 @@ class PostureCorrector:
         while True:
             # si hay una solicitud de calibración desde el IRQ, la ejecutamos acá
             if self._calibrate_request and not self._calibrating:
-                # ceder un pequeño tiempo antes de calibrar (opcional)
                 time.sleep_ms(10)
                 self.calibrate()
-                # after calibrate continue loop to avoid doing readings immediately
                 time.sleep_ms(50)
                 continue
 
-            # si no está calibrado, no hacer lecturas de postura pero ceder CPU
-            if not self.is_calibrated:
-                # led azul parpadeando advertising cuando no está conectado
+            # si el sistema está apagado, NO hacer monitoreo continuo ni alertas,
+            # pero seguir permitiendo escrituras a threshold/calibrate/actuadores.
+            if not self.system_enabled:
+                # comportamiento LED BLE para mantener responsividad
                 if self.conn_handle is None:
                     self.led_blue.on(); time.sleep_ms(50)
                     self.led_blue.off(); time.sleep_ms(950)
                 else:
-                    # si está conectado pero aun sin calibrar, mantener led azul encendido
                     self.led_blue.on()
-                time.sleep_ms(100)  # crucial: cede tiempo para que BLE procese eventos
+                time.sleep_ms(100)
+                continue
+
+            # si no está calibrado, no hacer lecturas de postura pero ceder CPU
+            if not self.is_calibrated:
+                if self.conn_handle is None:
+                    self.led_blue.on(); time.sleep_ms(50)
+                    self.led_blue.off(); time.sleep_ms(950)
+                else:
+                    self.led_blue.on()
+                time.sleep_ms(100)
                 continue
 
             # Normal operation: leer sensor y evaluar postura
@@ -275,7 +341,6 @@ class PostureCorrector:
                     except OSError as e:
                         print(f"Error al notificar: {e}")
             
-            # ceder tiempo y evitar loop apretado
             time.sleep_ms(100)
 
 if __name__ == "__main__":
