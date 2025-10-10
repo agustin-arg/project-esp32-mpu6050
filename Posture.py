@@ -261,14 +261,6 @@ class PostureCorrector:
         self._calibrating = False
         if self.conn_handle is not None:
             self.led_blue.on()
-    
-#     def _buzzer_on(self):
-#         if not self.buzzer_enabled:
-#             return
-#         self.buzzer.duty(512)
-#         
-#     def _buzzer_off(self):
-#         self.buzzer.duty(0)
 
     def run(self):
         print("Corrector de postura iniciado.")
