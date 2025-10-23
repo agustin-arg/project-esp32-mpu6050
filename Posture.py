@@ -236,7 +236,9 @@ class PostureCorrector:
 
     def calculate_pitch(self, accel_data):
         x, y, z = accel_data['x'], accel_data['y'], accel_data['z']
-        pitch = math.atan2(y, math.sqrt(x**2 + z**2))
+        # La inclinación Pitch (adelante/atrás, rotación sobre Y) generalmente
+        # se calcula usando la componente X en relación con la proyección en el plano YZ.
+        pitch = math.atan2(x, math.sqrt(y**2 + z**2))
         return math.degrees(pitch)
         
     def calibrate(self):
