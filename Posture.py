@@ -3,7 +3,7 @@
 
 import ubluetooth
 import struct
-import time
+import utime
 import math
 from machine import Pin, I2C, PWM
 
@@ -236,7 +236,7 @@ class PostureCorrector:
 
     def calculate_pitch(self, accel_data):
         x, y, z = accel_data['x'], accel_data['y'], accel_data['z']
-        pitch = math.atan2(z, math.sqrt(y**2 + x**2))
+        pitch = math.atan2(math.sqrt(y**2 + x**2),z)
         return math.degrees(pitch)
         
     def calibrate(self):
@@ -247,14 +247,14 @@ class PostureCorrector:
         self._calibrating = True
         print("Calibrando...")
         for _ in range(3):
-            self.led_blue.on(); time.sleep_ms(100)
-            self.led_blue.off(); time.sleep_ms(100)
+            self.led_blue.on(); utime.sleep_ms(100)
+            self.led_blue.off(); utime.sleep_ms(100)
         
         accel_data = self.mpu.get_accel_data()
         self.calibrated_angle = self.calculate_pitch(accel_data)
         self.is_calibrated = True
         
-        self.led_green.on(); time.sleep_ms(1000); self.led_green.off()
+        self.led_green.on(); utime.sleep_ms(1000); self.led_green.off()
         print(f"Calibración completa. Ángulo: {self.calibrated_angle:.2f}")
         # restablecer flags
         self._calibrate_request = False
@@ -269,9 +269,9 @@ class PostureCorrector:
         while True:
             # si hay una solicitud de calibración desde el IRQ, la ejecutamos acá
             if self._calibrate_request and not self._calibrating:
-                time.sleep_ms(10)
+                utime.sleep_ms(10)
                 self.calibrate()
-                time.sleep_ms(50)
+                utime.sleep_ms(50)
                 continue
 
             # si el sistema está apagado, NO hacer monitoreo continuo ni alertas,
@@ -279,21 +279,21 @@ class PostureCorrector:
             if not self.system_enabled:
                 # comportamiento LED BLE para mantener responsividad
                 if self.conn_handle is None:
-                    self.led_blue.on(); time.sleep_ms(50)
-                    self.led_blue.off(); time.sleep_ms(950)
+                    self.led_blue.on(); utime.sleep_ms(50)
+                    self.led_blue.off(); utime.sleep_ms(950)
                 else:
                     self.led_blue.on()
-                time.sleep_ms(100)
+                utime.sleep_ms(100)
                 continue
 
             # si no está calibrado, no hacer lecturas de postura pero ceder CPU
             if not self.is_calibrated:
                 if self.conn_handle is None:
-                    self.led_blue.on(); time.sleep_ms(50)
-                    self.led_blue.off(); time.sleep_ms(950)
+                    self.led_blue.on(); utime.sleep_ms(50)
+                    self.led_blue.off(); utime.sleep_ms(950)
                 else:
                     self.led_blue.on()
-                time.sleep_ms(100)
+                utime.sleep_ms(100)
                 continue
 
             # Normal operation: leer sensor y evaluar postura
@@ -333,7 +333,7 @@ class PostureCorrector:
                     except OSError as e:
                         print(f"Error al notificar: {e}")
             
-            time.sleep_ms(100)
+            utime.sleep_ms(100)
 
 if __name__ == "__main__":
     corrector = PostureCorrector()
