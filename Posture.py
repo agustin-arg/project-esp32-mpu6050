@@ -7,7 +7,6 @@ import utime
 import math
 from machine import Pin, I2C, PWM
 
-# --- CLASE MPU6050 (sin cambios) ---
 class MPU6050:
     def __init__(self, i2c, addr=0x68):
         self.i2c = i2c
@@ -42,7 +41,6 @@ class MPU6050:
         z /= 131.0
         return {'x': x, 'y': y, 'z': z}
 
-# --- PINES (Constantes de módulo) ---
 PIN_SDA = 21
 PIN_SCL = 22
 PIN_LED_RED = 25      # Postura incorrecta
@@ -51,7 +49,7 @@ PIN_LED_BLUE = 32     # Estado de BLE
 PIN_BUZZER = 26
 PIN_VIBRATOR = 18
 
-# --- UUIDs (igual que antes) ---
+
 _POSTURE_SERVICE_UUID = ubluetooth.UUID("0000180f-0000-1000-8000-00805f9b34fb")
 _POSTURE_STATUS_CHAR_UUID = ubluetooth.UUID("00002a19-0000-1000-8000-00805f9b34fb")
 _THRESHOLD_ANGLE_CHAR_UUID = ubluetooth.UUID("00002a1b-0000-1000-8000-00805f9b34fb")
@@ -60,7 +58,6 @@ _BUZZER_CONTROL_CHAR_UUID = ubluetooth.UUID("00002a1e-0000-1000-8000-00805f9b34f
 _VIBRATOR_CONTROL_CHAR_UUID = ubluetooth.UUID("00002a1f-0000-1000-8000-00805f9b34fb")
 _LEDS_CONTROL_CHAR_UUID = ubluetooth.UUID("00002a20-0000-1000-8000-00805f9b34fb")
 _NOTIFY_CONTROL_CHAR_UUID = ubluetooth.UUID("00002a21-0000-1000-8000-00805f9b34fb")
-# nuevo UUID para control de encendido/apagado del sistema
 _SYSTEM_CONTROL_CHAR_UUID = ubluetooth.UUID("00002a22-0000-1000-8000-00805f9b34fb")
 
 class PostureCorrector:
@@ -95,6 +92,11 @@ class PostureCorrector:
         # BLE
         self.setup_ble()
 
+        # Parámetros y estado del filtro complementario (Sensor Fusion)
+        self.filtered_pitch = 0.0                  # Ángulo filtrado
+        self.last_time = utime.ticks_us()         # Marca de tiempo inicial (microsegundos)
+        self.alpha = 0.98                          # Factor de ponderación (alpha para acelerómetro)
+
     def setup_ble(self):
         self.ble = ubluetooth.BLE()
         self.ble.active(True)
@@ -107,7 +109,6 @@ class PostureCorrector:
         vibrator_char = (_VIBRATOR_CONTROL_CHAR_UUID, ubluetooth.FLAG_READ | ubluetooth.FLAG_WRITE,)
         leds_char = (_LEDS_CONTROL_CHAR_UUID, ubluetooth.FLAG_READ | ubluetooth.FLAG_WRITE,)
         notify_char = (_NOTIFY_CONTROL_CHAR_UUID, ubluetooth.FLAG_READ | ubluetooth.FLAG_WRITE,)
-        # nuevo: characteristic para encender/apagar sistema
         system_char = (_SYSTEM_CONTROL_CHAR_UUID, ubluetooth.FLAG_READ | ubluetooth.FLAG_WRITE,)
 
         posture_service = (_POSTURE_SERVICE_UUID, (status_char, threshold_char, calibrate_char, buzzer_char,
@@ -123,7 +124,6 @@ class PostureCorrector:
         self.ble.gatts_write(self.vibrator_handle, struct.pack('<B', 1))
         self.ble.gatts_write(self.leds_handle, struct.pack('<B', 1))
         self.ble.gatts_write(self.notify_handle, struct.pack('<B', 1))
-        # estado inicial del sistema (1 = encendido)
         self.ble.gatts_write(self.system_handle, struct.pack('<B', 1))
 
         self.adv_payload = self._adv_payload(name='Posture', services=[_POSTURE_SERVICE_UUID])
@@ -234,10 +234,25 @@ class PostureCorrector:
                 except Exception:
                     pass
 
-    def calculate_pitch(self, accel_data):
+    def calculate_accel_pitch(self, accel_data):
         x, y, z = accel_data['x'], accel_data['y'], accel_data['z']
-        pitch = math.atan2(math.sqrt(y**2 + x**2),z)
+        pitch = math.atan2(z, math.sqrt(y**2 + x**2))
         return math.degrees(pitch)
+
+    def calculate_fused_pitch(self, accel_data, gyro_data):
+        current_time = utime.ticks_us()
+        delta_t = utime.ticks_diff(current_time, self.last_time) / 1000000.0
+        
+        if delta_t <= 0:
+            delta_t = 0.001
+        self.last_time = current_time
+        accel_pitch = self.calculate_accel_pitch(accel_data)
+        gyro_rate = gyro_data.get('y', 0.0)  # °/s
+        gyro_change = gyro_rate * delta_t  # en grados
+        self.filtered_pitch = (1.0 - self.alpha) * (self.filtered_pitch + gyro_change) + \
+                              (self.alpha) * accel_pitch
+
+        return self.filtered_pitch
         
     def calibrate(self):
         # Esta función debe ejecutarse fuera del IRQ
@@ -251,8 +266,14 @@ class PostureCorrector:
             self.led_blue.off(); utime.sleep_ms(100)
         
         accel_data = self.mpu.get_accel_data()
-        self.calibrated_angle = self.calculate_pitch(accel_data)
+        gyro_data = self.mpu.get_gyro_data()
+        # Resetear la marca de tiempo del filtro para evitar un Δt grande en la primera fusión
+        self.last_time = utime.ticks_us()
+        self.calibrated_angle = self.calculate_fused_pitch(accel_data, gyro_data)
         self.is_calibrated = True
+
+        # Inicializar estado del filtro con el ángulo calibrado
+        self.filtered_pitch = self.calibrated_angle
         
         self.led_green.on(); utime.sleep_ms(1000); self.led_green.off()
         print(f"Calibración completa. Ángulo: {self.calibrated_angle:.2f}")
@@ -296,9 +317,10 @@ class PostureCorrector:
                 utime.sleep_ms(100)
                 continue
 
-            # Normal operation: leer sensor y evaluar postura
+            # Normal operation: leer sensor y evaluar postura usando filtro complementario
             accel_data = self.mpu.get_accel_data()
-            current_angle = self.calculate_pitch(accel_data)
+            gyro_data = self.mpu.get_gyro_data()
+            current_angle = self.calculate_fused_pitch(accel_data, gyro_data)
             deviation = abs(current_angle - self.calibrated_angle)
             
             self.is_bad_posture = deviation > self.threshold_angle
