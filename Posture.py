@@ -1,5 +1,4 @@
 # posture_corrector.py
-# (todo igual salvo las partes mostradas abajo; copialo entero si querés)
 
 import ubluetooth
 import struct
@@ -48,7 +47,7 @@ PIN_LED_GREEN = 33    # Postura correcta
 PIN_LED_BLUE = 32     # Estado de BLE
 PIN_BUZZER = 26
 PIN_VIBRATOR = 18
-
+PIN_SERVO = 19  # nuevo: pin para el servomotor (ajustar según conexión)
 
 _POSTURE_SERVICE_UUID = ubluetooth.UUID("0000180f-0000-1000-8000-00805f9b34fb")
 _POSTURE_STATUS_CHAR_UUID = ubluetooth.UUID("00002a19-0000-1000-8000-00805f9b34fb")
@@ -81,6 +80,15 @@ class PostureCorrector:
         self.vibrator_enabled = True
         self.leds_enabled = True
         self.notifications_enabled = True
+
+        # nuevo: servomotor
+        try:
+            self.servo = PWM(Pin(PIN_SERVO), freq=50, duty=0)
+        except Exception:
+            self.servo = None
+        self.servo_enabled = True
+        self.servo_alert_angle = 180   # ángulo cuando hay mala postura
+        self.servo_idle_angle = 0     # ángulo en reposo
 
         # nuevo: control de sistema (on/off). Cuando False no hace controles continuos pero acepta writes.
         self.system_enabled = True
@@ -225,6 +233,13 @@ class PostureCorrector:
                             self.vibrator.value(0)
                         except Exception:
                             pass
+                    # apagar servo al apagar sistema
+                    try:
+                        if self.servo is not None:
+                            self.servo.duty(0)
+                    except Exception:
+                        pass
+
                     self.led_red.off()
                     self.led_green.off()
                     # LED azul debe indicar estado BLE activo
@@ -282,6 +297,29 @@ class PostureCorrector:
         self._calibrating = False
         if self.conn_handle is not None:
             self.led_blue.on()
+
+    # --- nuevo: métodos para controlar servo ---
+    def _angle_to_duty(self, angle):
+        # mapea 0-180º a rango de duty (valores apropiados para pulsos ~1-2ms en 50Hz)
+        # Para ESP32 PWM (duty 0-1023): 2.5% -> ~26, 12.5% -> ~128
+        min_duty = 26
+        max_duty = 128
+        if angle is None:
+            return 0
+        # asegurar 0..180
+        a = max(0, min(180, int(angle)))
+        return int(min_duty + (a / 180.0) * (max_duty - min_duty))
+
+    def set_servo_angle(self, angle):
+        if self.servo is None:
+            return
+        try:
+            # asegurar ángulo en rango antes de convertir
+            a = max(0, min(180, int(angle)))
+            duty = self._angle_to_duty(a)
+            self.servo.duty(duty)
+        except Exception:
+            pass
 
     def run(self):
         print("Corrector de postura iniciado.")
@@ -345,6 +383,19 @@ class PostureCorrector:
                 self.vibrator.value(self.is_bad_posture)
             else:
                 self.vibrator.off()
+
+            # control del servomotor según postura
+            if self.servo_enabled:
+                if self.is_bad_posture:
+                    self.set_servo_angle(self.servo_alert_angle)
+                else:
+                    self.set_servo_angle(self.servo_idle_angle)
+            else:
+                try:
+                    if self.servo is not None:
+                        self.servo.duty(0)
+                except Exception:
+                    pass
 
             if self.notifications_enabled and self.is_bad_posture != last_notified_state:
                 if self.conn_handle is not None:
