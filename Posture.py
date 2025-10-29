@@ -1,5 +1,4 @@
 # posture_corrector.py
-# (todo igual salvo las partes mostradas abajo; copialo entero si querés)
 
 import ubluetooth
 import struct
@@ -48,7 +47,7 @@ PIN_LED_GREEN = 33    # Postura correcta
 PIN_LED_BLUE = 32     # Estado de BLE
 PIN_BUZZER = 26
 PIN_VIBRATOR = 18
-
+PIN_SERVO = 19  # nuevo: pin para el servomotor (ajustar según conexión)
 
 _POSTURE_SERVICE_UUID = ubluetooth.UUID("0000180f-0000-1000-8000-00805f9b34fb")
 _POSTURE_STATUS_CHAR_UUID = ubluetooth.UUID("00002a19-0000-1000-8000-00805f9b34fb")
@@ -81,6 +80,23 @@ class PostureCorrector:
         self.vibrator_enabled = True
         self.leds_enabled = True
         self.notifications_enabled = True
+
+        # nuevo: servomotor
+        try:
+            self.servo = PWM(Pin(PIN_SERVO), freq=50, duty=0)
+        except Exception:
+            self.servo = None
+        self.servo_enabled = True
+        self.servo_alert_angle = 180   # ángulo cuando hay mala postura
+        self.servo_idle_angle = 0     # ángulo en reposo
+
+        # nuevo: debounce y gestión de señal para evitar oscilaciones rápidas
+        self._servo_last_applied_state = False          # estado aplicado al servo (False=buena, True=mala)
+        self._servo_candidate_state = None              # estado observado actualmente candidato a aplicar
+        self._servo_candidate_since = 0                 # ticks_ms cuando comenzó el candidato
+        self.servo_debounce_ms = 300                    # tiempo mínimo estable antes de mover servo
+        self.servo_hold_ms = 200                        # tiempo en ms para mantener la señal PWM luego de mover
+        self._servo_hold_until = 0                      # ticks_ms hasta cuando mantener señal activa
 
         # nuevo: control de sistema (on/off). Cuando False no hace controles continuos pero acepta writes.
         self.system_enabled = True
@@ -225,6 +241,13 @@ class PostureCorrector:
                             self.vibrator.value(0)
                         except Exception:
                             pass
+                    # apagar servo al apagar sistema
+                    try:
+                        if self.servo is not None:
+                            self.servo.duty(0)
+                    except Exception:
+                        pass
+
                     self.led_red.off()
                     self.led_green.off()
                     # LED azul debe indicar estado BLE activo
@@ -282,6 +305,30 @@ class PostureCorrector:
         self._calibrating = False
         if self.conn_handle is not None:
             self.led_blue.on()
+
+    # --- nuevo: métodos para controlar servo ---
+    def _angle_to_duty(self, angle):
+        # mapea 0-180º a rango de duty (valores aproximados para ESP32/duty 0-1023)
+        min_duty = 40
+        max_duty = 115
+        if angle is None:
+            return 0
+        a = max(0, min(180, int(angle)))
+        return int(min_duty + (a / 180.0) * (max_duty - min_duty))
+
+    def set_servo_angle(self, angle):
+        # ahora aplica señal PWM y programa un periodo de hold tras el movimiento
+        if self.servo is None:
+            return
+        try:
+            # convertir ángulo a duty (misma función previa)
+            duty = self._angle_to_duty(angle)
+            # aplicar señal
+            self.servo.duty(duty)
+            # programar hasta cuando mantener la señal
+            self._servo_hold_until = utime.ticks_add(utime.ticks_ms(), self.servo_hold_ms)
+        except Exception:
+            pass
 
     def run(self):
         print("Corrector de postura iniciado.")
@@ -345,6 +392,42 @@ class PostureCorrector:
                 self.vibrator.value(self.is_bad_posture)
             else:
                 self.vibrator.off()
+
+            # control del servomotor según postura con debounce y señal temporal
+            if self.servo_enabled and self.servo is not None and self.system_enabled:
+                now = utime.ticks_ms()
+                observed = bool(self.is_bad_posture)
+
+                # Si el candidato es distinto del observado, iniciar periodo de candidato
+                if self._servo_candidate_state is None or self._servo_candidate_state != observed:
+                    self._servo_candidate_state = observed
+                    self._servo_candidate_since = now
+
+                # Si el candidato lleva tiempo suficiente estable, aplicarlo
+                if utime.ticks_diff(now, self._servo_candidate_since) >= self.servo_debounce_ms:
+                    if self._servo_last_applied_state != self._servo_candidate_state:
+                        # aplicar movimiento (solo cuando haya cambio estable)
+                        angle = self.servo_alert_angle if self._servo_candidate_state else self.servo_idle_angle
+                        self.set_servo_angle(angle)
+                        self._servo_last_applied_state = self._servo_candidate_state
+
+                # Si ya pasó el hold, desconectar la señal PWM para ahorrar corriente
+                if utime.ticks_diff(now, self._servo_hold_until) >= 0 and self._servo_hold_until != 0:
+                    try:
+                        # quitar señal (duty 0)
+                        self.servo.duty(0)
+                        self._servo_hold_until = 0
+                    except Exception:
+                        pass
+            else:
+                # si servo deshabilitado o sistema apagado, asegurarse de quitar señal y resetear candidatos
+                try:
+                    if self.servo is not None:
+                        self.servo.duty(0)
+                except Exception:
+                    pass
+                self._servo_candidate_state = None
+                self._servo_candidate_since = 0
 
             if self.notifications_enabled and self.is_bad_posture != last_notified_state:
                 if self.conn_handle is not None:
