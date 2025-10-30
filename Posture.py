@@ -47,7 +47,7 @@ PIN_LED_GREEN = 33    # Postura correcta
 PIN_LED_BLUE = 32     # Estado de BLE
 PIN_BUZZER = 26
 PIN_VIBRATOR = 18
-PIN_SERVO = 19  # nuevo: pin para el servomotor (ajustar según conexión)
+PIN_SERVO = 19
 
 _POSTURE_SERVICE_UUID = ubluetooth.UUID("0000180f-0000-1000-8000-00805f9b34fb")
 _POSTURE_STATUS_CHAR_UUID = ubluetooth.UUID("00002a19-0000-1000-8000-00805f9b34fb")
@@ -81,16 +81,16 @@ class PostureCorrector:
         self.leds_enabled = True
         self.notifications_enabled = True
 
-        # nuevo: servomotor
+        # Servomotor
         try:
             self.servo = PWM(Pin(PIN_SERVO), freq=50, duty=0)
         except Exception:
             self.servo = None
         self.servo_enabled = True
-        self.servo_alert_angle = 180   # ángulo cuando hay mala postura
-        self.servo_idle_angle = 0     # ángulo en reposo
+        self.servo_alert_angle = 90    # reducido de 180° a 90° para ajustarse al rango real
+        self.servo_idle_angle = 0      # ángulo en reposo
 
-        # nuevo: debounce y gestión de señal para evitar oscilaciones rápidas
+        # Debounce y gestión de señal para evitar oscilaciones rápidas
         self._servo_last_applied_state = False          # estado aplicado al servo (False=buena, True=mala)
         self._servo_candidate_state = None              # estado observado actualmente candidato a aplicar
         self._servo_candidate_since = 0                 # ticks_ms cuando comenzó el candidato
@@ -98,7 +98,7 @@ class PostureCorrector:
         self.servo_hold_ms = 200                        # tiempo en ms para mantener la señal PWM luego de mover
         self._servo_hold_until = 0                      # ticks_ms hasta cuando mantener señal activa
 
-        # nuevo: control de sistema (on/off). Cuando False no hace controles continuos pero acepta writes.
+        # Control de sistema (on/off). Cuando False no hace controles continuos pero acepta writes.
         self.system_enabled = True
 
         # Flag para pedir calibración desde el IRQ
@@ -306,18 +306,18 @@ class PostureCorrector:
         if self.conn_handle is not None:
             self.led_blue.on()
 
-    # --- nuevo: métodos para controlar servo ---
+    # --- Métodos para controlar servo ---
     def _angle_to_duty(self, angle):
-        # mapea 0-180º a rango de duty (valores aproximados para ESP32/duty 0-1023)
-        min_duty = 40
-        max_duty = 115
+        # mapea 0-90º a rango de duty ajustado para el servo real
+        min_duty = 25
+        max_duty = 75
         if angle is None:
             return 0
-        a = max(0, min(180, int(angle)))
-        return int(min_duty + (a / 180.0) * (max_duty - min_duty))
+        a = max(0, min(90, int(angle)))  # limitado a 90° en lugar de 180°
+        return int(min_duty + (a / 90.0) * (max_duty - min_duty))
 
     def set_servo_angle(self, angle):
-        # ahora aplica señal PWM y programa un periodo de hold tras el movimiento
+        # Aplica señal PWM y programa un periodo de hold tras el movimiento
         if self.servo is None:
             return
         try:
