@@ -58,6 +58,7 @@ _VIBRATOR_CONTROL_CHAR_UUID = ubluetooth.UUID("00002a1f-0000-1000-8000-00805f9b3
 _LEDS_CONTROL_CHAR_UUID = ubluetooth.UUID("00002a20-0000-1000-8000-00805f9b34fb")
 _NOTIFY_CONTROL_CHAR_UUID = ubluetooth.UUID("00002a21-0000-1000-8000-00805f9b34fb")
 _SYSTEM_CONTROL_CHAR_UUID = ubluetooth.UUID("00002a22-0000-1000-8000-00805f9b34fb")
+_SERVO_CONTROL_CHAR_UUID = ubluetooth.UUID("00002a23-0000-1000-8000-00805f9b34fb")
 
 class PostureCorrector:
     def __init__(self):
@@ -135,13 +136,14 @@ class PostureCorrector:
         leds_char = (_LEDS_CONTROL_CHAR_UUID, ubluetooth.FLAG_READ | ubluetooth.FLAG_WRITE,)
         notify_char = (_NOTIFY_CONTROL_CHAR_UUID, ubluetooth.FLAG_READ | ubluetooth.FLAG_WRITE,)
         system_char = (_SYSTEM_CONTROL_CHAR_UUID, ubluetooth.FLAG_READ | ubluetooth.FLAG_WRITE,)
+        servo_char = (_SERVO_CONTROL_CHAR_UUID, ubluetooth.FLAG_READ | ubluetooth.FLAG_WRITE,)
 
         posture_service = (_POSTURE_SERVICE_UUID, (status_char, threshold_char, calibrate_char, buzzer_char,
-                                                   vibrator_char, leds_char, notify_char, system_char),)
+                                                   vibrator_char, leds_char, notify_char, system_char, servo_char),)
         
         handles = self.ble.gatts_register_services((posture_service,))
         (self.status_handle, self.threshold_handle, self.calibrate_handle, self.buzzer_handle, 
-         self.vibrator_handle, self.leds_handle, self.notify_handle, self.system_handle) = handles[0]
+         self.vibrator_handle, self.leds_handle, self.notify_handle, self.system_handle, self.servo_handle) = handles[0]
         
         # Valores iniciales
 #         self.ble.gatts_write(self.threshold_handle, struct.pack('<B', int(self.threshold_angle)))
@@ -150,6 +152,8 @@ class PostureCorrector:
         self.ble.gatts_write(self.leds_handle, struct.pack('<B', 1))
         self.ble.gatts_write(self.notify_handle, struct.pack('<B', 1))
         self.ble.gatts_write(self.system_handle, struct.pack('<B', 1))
+        # estado inicial del servo (1 = enabled)
+        self.ble.gatts_write(self.servo_handle, struct.pack('<B', 1))
 
         self.adv_payload = self._adv_payload(name='Posture', services=[_POSTURE_SERVICE_UUID])
         self.start_advertising()
@@ -250,10 +254,16 @@ class PostureCorrector:
                             self.vibrator.value(0)
                         except Exception:
                             pass
-                    # apagar servo al apagar sistema
+                    # mover servo a posición idle al apagar el sistema (permitir que haga el movimiento)
                     try:
                         if self.servo is not None:
-                            self.servo.duty(0)
+                            # forzar posición de reposo usando el método seguro (set_servo_angle)
+                            # esto aplicará PWM y programará un hold para que el servo pueda moverse
+                            self.set_servo_angle(self.servo_idle_angle)
+                            # resetear candidatos para evitar que el run() intente cambiarlo inmediatamente
+                            self._servo_candidate_state = None
+                            self._servo_candidate_since = 0
+                            self._servo_last_applied_state = False
                     except Exception:
                         pass
 
@@ -265,6 +275,21 @@ class PostureCorrector:
                     self.ble.gatts_write(self.system_handle, struct.pack('<B', 1 if state else 0))
                 except Exception:
                     pass
+            elif value_handle == self.servo_handle:
+                # Control de enable/disable del servo desde la app
+                self.servo_enabled = state
+                print(f"Servo: {'activado' if state else 'desactivado'}")
+                # Si el sistema está apagado o se desactiva el servo, asegurarse de quitar señal física
+                if not self.system_enabled or not self.servo_enabled:
+                    try:
+                        if self.servo is not None:
+                            self.servo.duty(0)
+                    except Exception:
+                        pass
+                # resetear candidato de servo para evitar movimientos indeseados
+                if not self.servo_enabled:
+                    self._servo_candidate_state = None
+                    self._servo_candidate_since = 0
 
     def calculate_accel_pitch(self, accel_data):
         x, y, z = accel_data['x'], accel_data['y'], accel_data['z']
