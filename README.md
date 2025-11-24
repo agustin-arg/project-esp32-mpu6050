@@ -1,37 +1,70 @@
-# project-esp32-mpu6050
+# **Posture**
 
-Este repositorio contiene todos los archivos y módulos necesarios para mi proyecto de ingeniería en computación que utiliza el microcontrolador ESP32 junto con el sensor MPU6050 y diversos actuadores.
+Un dispositivo *wearable* que detecta malas posturas en tiempo real y ofrece retroalimentación háptica (vibración), acción mecánica (servomotor), visual (LEDs) y auditiva (buzzer). Incluye conectividad **Bluetooth Low Energy (BLE)** para configuración y monitoreo remoto.
 
-## Hardware Utilizado
+## **Características**
 
-### Microcontrolador
-- **ESP32 módulo ESP32-WROOM-32**
-- **Chip:** ESP32-D0WDQ6
-- **Placa de desarrollo:** NodeMCU-32S
+* **Feedback Multimodal:**  
+  * **LED Rojo:** Mala postura.  
+  * **LED Verde:** Postura correcta.  
+  * **Buzzer:** Alerta sonora.  
+  * **Vibrador:** Alerta táctil.  
+  * **Servomotor:** Acción mecánica correctiva (opcional).  
+* **Conectividad BLE:** Permite ver el estado, calibrar y configurar umbrales desde la App móvil.  
 
-### Sensores
-- **MPU6050:** Sensor de acelerómetro y giroscopio de 6 ejes
+## **🛠️ Hardware Requerido y Conexiones**
 
-### Actuadores
-- Diversos actuadores que serán especificados en la documentación del proyecto
+| Componente | Pin ESP32 (GPIO) | Descripción |
+| :---- | :---- | :---- |
+| **MPU6050 SDA** | GPIO 21 | Datos I2C |
+| **MPU6050 SCL** | GPIO 22 | Reloj I2C |
+| **LED Rojo** | GPIO 25 | Indicador de mala postura |
+| **LED Verde** | GPIO 33 | Indicador de postura correcta |
+| **LED Azul** | GPIO 32 | Estado Bluetooth / Calibración |
+| **Buzzer** | GPIO 26 | Alarma sonora (PWM) |
+| **Vibrador** | GPIO 18 | Motor de vibración |
+| **Servomotor** | GPIO 19 | Servo para corrección física |
 
-## Entorno de Desarrollo
+## **📂 Estructura del Proyecto**
 
-El proyecto está programado utilizando **MicroPython**, proporcionando una interfaz de programación de alto nivel para el desarrollo rápido de prototipos y aplicaciones IoT.
+El código está organizado en 6 archivos para facilitar el mantenimiento:
 
-## Simulación
+1. main.py: **Punto de entrada**. Orquesta la inicialización y el bucle principal.  
+2. config.py: **Configuración**. Almacena pines, constantes y UUIDs de Bluetooth.  
+3. mpu6050.py: **Driver**. Manejo de bajo nivel del sensor I2C.  
+4. actuators.py: **Hardware**. Controla LEDs, buzzer, motor y servo.
+5. ble\_service.py: **Comunicaciones**. Gestiona la publicidad BLE, conexión y características GATT.  
+6. posture\_logic.py: **Matemáticas**. Contiene la física pura y el filtro complementario para calcular el ángulo.
 
-Las conexiones del circuito pueden visualizarse y simularse en Wokwi a través del siguiente enlace:
+## **🚀 Instalación y Uso**
 
-🔗 **[Simulador Wokwi - Proyecto ESP32 MPU6050](https://wokwi.com/projects/442658447914191873)**
+1. **Flashear MicroPython:** Asegúrate de que tu ESP32 tenga instalado el firmware de MicroPython más reciente.  
+2. **Subir Archivos:** Sube los 6 archivos .py a la raíz del dispositivo (usando Thonny IDE, ampy o rshell).  
+3. **Encendido:** Reinicia el ESP32.  
+4. **Calibración (Importante):**  
+   * Colócate el dispositivo en la espalda en una **postura correcta**.  
+   * Envía el comando de calibración vía BLE o espera la secuencia inicial.  
+   * El **LED Azul** parpadeará 3 veces (tomando datos).  
+   * El **LED Verde** se encenderá por 1 segundo confirmando el éxito.  
+5. **Funcionamiento:** Si te inclinas más allá del umbral (por defecto 20°), el dispositivo te alertará.
 
-> **⚠️ Nota importante:** El ESP32 utilizado en el simulador Wokwi y el ESP32 físico (NodeMCU-32S) no son exactamente el mismo modelo. Es fundamental tener en cuenta que los pines pueden comportarse de manera diferente entre la simulación y el hardware real. Siempre verificar el pinout específico de cada placa antes de realizar las conexiones físicas.
+## **📱 Especificaciones Bluetooth (BLE)**
 
-## Estructura del Proyecto
+Para desarrollar o conectar Posture App (link), utiliza los siguientes UUIDs definidos en config.py:
 
-Este repositorio incluirá:
-- Código fuente en MicroPython
-- Esquemas de conexión
-- Documentación técnica
-- Librerías y módulos personalizados
-- Ejemplos de uso y pruebas
+**Service UUID:** 0000180f-0000-1000-8000-00805f9b34fb
+
+| Característica | UUID (Prefijo 0000...) | Permisos | Función |
+| :---- | :---- | :---- | :---- |
+| **Status** | ...2a19... | Read, Notify | Notifica 1 si hay mala postura, 0 si es buena. |
+| **Threshold** | ...2a1b... | Read, Write | Lee o establece el ángulo límite (ej. 20°). |
+| **Calibrate** | ...2a1c... | Write | Escribe cualquier valor para iniciar calibración. |
+| **System** | ...2a22... | Read, Write | 1 \= Encendido, 0 \= Apagado (Standby). |
+| **Buzzer** | ...2a1e... | Read, Write | 1 \= Enable, 0 \= Disable. |
+| **Vibrator** | ...2a1f... | Read, Write | 1 \= Enable, 0 \= Disable. |
+| **LEDs** | ...2a20... | Read, Write | 1 \= Enable, 0 \= Disable. |
+
+## **⚙️ App de Android**
+
+Se incluye una app de Android para poder enciende o apaga actuadores vía Bluetooth y muestra imágenes a modo de monitoreo
+
