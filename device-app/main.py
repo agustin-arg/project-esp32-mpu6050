@@ -71,6 +71,11 @@ class PostureApp:
                 # Si la batería está crítica, esta función NO retorna (entra en deepsleep)
                 # Al ser cada 5 minutos, el impacto en rendimiento es despreciable
                 volts = self.battery.check_and_handle_low_battery(self.actuators)
+                
+                # Notificar nivel de batería por BLE (solo si hay conexión)
+                if self.ble.conn_handle:
+                    self.ble.notify_battery(volts)
+                
                 self.last_battery_check = now
 
             # 1. Chequear petición de calibración

@@ -23,6 +23,8 @@ class PostureBLE:
 
         self._setup_services()
         self._start_advertising()
+        # Estado de batería actual
+        self.last_battery_level = None
 
     def _setup_services(self):
         # Definición de características
@@ -34,13 +36,14 @@ class PostureBLE:
         leds_char = (config.LEDS_CONTROL_CHAR_UUID, ubluetooth.FLAG_READ | ubluetooth.FLAG_WRITE,)
         notify_char = (config.NOTIFY_CONTROL_CHAR_UUID, ubluetooth.FLAG_READ | ubluetooth.FLAG_WRITE,)
         system_char = (config.SYSTEM_CONTROL_CHAR_UUID, ubluetooth.FLAG_READ | ubluetooth.FLAG_WRITE,)
+        battery_char = (config.BATTERY_NOTIFY_CHAR_UUID, ubluetooth.FLAG_READ | ubluetooth.FLAG_NOTIFY,)
 
         posture_service = (config.POSTURE_SERVICE_UUID, (status_char, threshold_char, calibrate_char, buzzer_char,
-                                                         vibrator_char, leds_char, notify_char, system_char),)
+                                                         vibrator_char, leds_char, notify_char, system_char, battery_char),)
         
         handles = self.ble.gatts_register_services((posture_service,))
         (self.status_handle, self.threshold_handle, self.calibrate_handle, self.buzzer_handle, 
-         self.vibrator_handle, self.leds_handle, self.notify_handle, self.system_handle) = handles[0]
+         self.vibrator_handle, self.leds_handle, self.notify_handle, self.system_handle, self.battery_handle) = handles[0]
          
         # Escribir valores iniciales
         self.ble.gatts_write(self.buzzer_handle, struct.pack('<B', 1))
@@ -48,6 +51,7 @@ class PostureBLE:
         self.ble.gatts_write(self.leds_handle, struct.pack('<B', 1))
         self.ble.gatts_write(self.notify_handle, struct.pack('<B', 1))
         self.ble.gatts_write(self.system_handle, struct.pack('<B', 1))
+        self.ble.gatts_write(self.battery_handle, struct.pack('<B', 0))
 
     def _start_advertising(self):
         payload = bytearray()
@@ -77,6 +81,42 @@ class PostureBLE:
             self.ble.gatts_write(self.system_handle, struct.pack('<B', 1 if state else 0))
         except: pass
 
+    def notify_battery(self, voltage):
+        """
+        Notifica el nivel de batería basado en voltaje.
+        Solo envía si hay cambio (0, 1 o 2).
+        Args:
+            voltage (float): Voltaje actual en V
+        """
+        if self.conn_handle is None:
+            return False
+        
+        # Determinar nivel de batería
+        if voltage >= config.BATTERY_VOLTAGE_MAX:
+            battery_level = 2  # Alto
+        elif voltage >= config.BATTERY_VOLTAGE_MID:
+            battery_level = 1  # Intermedio
+        else:
+            battery_level = 0  # Bajo
+        
+        # Evitar notificaciones repetidas
+        if battery_level == self.last_battery_level:
+            return False
+        
+        # Actualizar estado
+        self.last_battery_level = battery_level
+        
+        # Enviar notificación
+        try:
+            self.ble.gatts_notify(
+                self.conn_handle,
+                self.battery_handle,
+                struct.pack('B', battery_level)
+            )
+            return True
+        except Exception as e:
+            print(f"Error battery notify: {e}")
+    
     def _irq(self, event, data):
         if event == 1: # CONNECT
             self.conn_handle, _, _ = data
