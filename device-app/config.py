@@ -30,9 +30,9 @@ BAT_MIN_VOLTAGE = 4.7  # Voltaje mínimo para hibernar. Recomendado: 4.7V
 BAT_CHECK_INTERVAL_MS = 300000 # 5 minutos
 
 # --- Constantes de Batería (Voltaje en V) ---
-BATTERY_VOLTAGE_MAX = 5.75
-BATTERY_VOLTAGE_MID = 5.40
-BATTERY_VOLTAGE_LOW = 5.00
+BATTERY_VOLTAGE_MAX = 5.30
+BATTERY_VOLTAGE_MID = 5.00 # Sí baja de este valor ya es LOW
+#El vontage cuando esta conectado por usb es LOW
 
 # --- UUIDs de Bluetooth BLE ---
 POSTURE_SERVICE_UUID = ubluetooth.UUID("0000180f-0000-1000-8000-00805f9b34fb")

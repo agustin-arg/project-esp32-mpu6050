@@ -66,7 +66,9 @@ class PostureApp:
         volts_inicial = self.battery.read_voltage()
         battery_level = self.ble.notify_battery(volts_inicial)
         if battery_level == 0:
-            self.actuators.set_battery_led(True)
+                    self.actuators.set_battery_led(True)
+        else:
+            self.actuators.set_battery_led(False)
         
         while True:
             now = utime.ticks_ms()
@@ -82,8 +84,6 @@ class PostureApp:
                 # 3. Controlar LED según nivel de batería
                 if battery_level == 0:
                     self.actuators.set_battery_led(True)
-                elif battery_level is False:
-                    self.actuators.set_battery_led(False)
                 else:
                     self.actuators.set_battery_led(False)
                 

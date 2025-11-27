@@ -82,6 +82,10 @@ class PostureBLE:
         except: pass
 
     def notify_battery(self, voltage):
+        '''
+        Resive el voltage medido y lo clasifica
+        Deve devolver la clasificación para hacer uso en el Main.py
+        '''
         # 1. Calcular nivel
         if voltage >= config.BATTERY_VOLTAGE_MAX:
             battery_level = 2
@@ -98,7 +102,7 @@ class PostureBLE:
 
         # 3. Chequeo de conexión CORRECTO
         if self.conn_handle is None:
-            return False
+            return battery_level
         
         # 4. Filtro de repetidos
         if battery_level == self.last_battery_level:
