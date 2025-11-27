@@ -29,7 +29,6 @@ class PostureApp:
         # 5. Monitor de Batería
         self.battery = BatteryMonitor()
         self.last_battery_check = 0
-        # Usamos el valor desde la configuración (ahora 5 minutos)
         self.battery_check_interval = config.BAT_CHECK_INTERVAL_MS
 
         # 6. Estado de la Aplicación
@@ -63,21 +62,30 @@ class PostureApp:
         print(f"Sistema iniciado. Chequeo de batería cada {self.battery_check_interval/1000}s")
         last_notified_state = None
 
-        #Notifica la batería una vez
+        # Notifica la batería una vez
         volts_inicial = self.battery.read_voltage()
-        self.ble.notify_battery(volts_inicial)
+        battery_level = self.ble.notify_battery(volts_inicial)
+        if battery_level == 0:
+            self.actuators.set_battery_led(True)
         
         while True:
             now = utime.ticks_ms()
 
-           # --- GESTIÓN DE BATERÍA ---
+            # --- GESTIÓN DE BATERÍA ---
             if utime.ticks_diff(now, self.last_battery_check) > self.battery_check_interval:
                 # 1. Revisar hardware y obtener voltaje
                 volts = self.battery.check_and_handle_low_battery(self.actuators)
-                print("Voltaje es de ", volts)
                 
-                # 2. Notificar al servicio BLE
-                self.ble.notify_battery(volts)
+                # 2. Notificar al servicio BLE y obtener nivel
+                battery_level = self.ble.notify_battery(volts)
+                
+                # 3. Controlar LED según nivel de batería
+                if battery_level == 0:
+                    self.actuators.set_battery_led(True)
+                elif battery_level is False:
+                    self.actuators.set_battery_led(False)
+                else:
+                    self.actuators.set_battery_led(False)
                 
                 self.last_battery_check = now
 

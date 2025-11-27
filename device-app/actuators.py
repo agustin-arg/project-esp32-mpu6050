@@ -4,13 +4,14 @@ import config
 
 class PostureActuators:
     def __init__(self):
-        # Inicializar LEDs de Postura y BLE
-        self.led_red = Pin(config.PIN_LED_RED, Pin.OUT, value=0)
-        self.led_green = Pin(config.PIN_LED_GREEN, Pin.OUT, value=0)
-        self.led_blue = Pin(config.PIN_LED_BLUE, Pin.OUT, value=0)
+        # LEDs de Postura
+        self.led_red = Pin(config.PIN_LED_RED, Pin.OUT)
+        self.led_green = Pin(config.PIN_LED_GREEN, Pin.OUT)
+        self.led_blue = Pin(config.PIN_LED_BLUE, Pin.OUT)
         
-        # Inicializar LED de Batería (Pin 2)
-        self.led_bat = Pin(config.PIN_LED_BAT_LOW, Pin.OUT, value=0)
+        # LED de Batería Baja
+        self.led_battery_low = Pin(config.PIN_LED_BAT_LOW, Pin.OUT)
+        self.led_battery_low.off()
         
         # Inicializar Buzzer y Vibrador
         self.buzzer = PWM(Pin(config.PIN_BUZZER), freq=220, duty=0)
@@ -79,6 +80,13 @@ class PostureActuators:
         try:
             if self.servo: self.servo.duty(0)
         except: pass
+
+    def set_battery_led(self, state):
+        """Enciende/apaga LED de batería baja"""
+        if state:
+            self.led_battery_low.on()
+        else:
+            self.led_battery_low.off()
 
     def update(self, is_bad_posture, settings):
         """Actualiza LEDs Rojo/Verde y Motores"""

@@ -102,7 +102,7 @@ class PostureBLE:
         
         # 4. Filtro de repetidos
         if battery_level == self.last_battery_level:
-            return False
+            return battery_level
             
         self.last_battery_level = battery_level
         
@@ -113,9 +113,10 @@ class PostureBLE:
                 self.battery_handle, 
                 struct.pack('<B', battery_level)
             )
-            return True
         except:
-            return False
+            pass
+        
+        return battery_level
     
     def _irq(self, event, data):
         if event == 1: # CONNECT
