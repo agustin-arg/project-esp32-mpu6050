@@ -51,7 +51,7 @@ class PostureBLE:
         self.ble.gatts_write(self.leds_handle, struct.pack('<B', 1))
         self.ble.gatts_write(self.notify_handle, struct.pack('<B', 1))
         self.ble.gatts_write(self.system_handle, struct.pack('<B', 1))
-        self.ble.gatts_write(self.battery_handle, struct.pack('<B', 0))
+        self.ble.gatts_write(self.battery_handle, struct.pack('<B', 2))
 
     def _start_advertising(self):
         payload = bytearray()
@@ -82,44 +82,45 @@ class PostureBLE:
         except: pass
 
     def notify_battery(self, voltage):
-        """
-        Notifica el nivel de batería basado en voltaje.
-        Solo envía si hay cambio (0, 1 o 2).
-        Args:
-            voltage (float): Voltaje actual en V
-        """
+        # 1. Calcular nivel
+        if voltage >= config.BATTERY_VOLTAGE_MAX:
+            battery_level = 2
+        elif voltage >= config.BATTERY_VOLTAGE_MID:
+            battery_level = 1
+        else:
+            battery_level = 0
+            
+        # 2. Guardar en memoria SIEMPRE (GATTS Write)
+        try:
+            self.ble.gatts_write(self.battery_handle, struct.pack('<B', battery_level))
+        except:
+            pass
+
+        # 3. Chequeo de conexión CORRECTO
         if self.conn_handle is None:
             return False
         
-        # Determinar nivel de batería
-        if voltage >= config.BATTERY_VOLTAGE_MAX:
-            battery_level = 2  # Alto
-        elif voltage >= config.BATTERY_VOLTAGE_MID:
-            battery_level = 1  # Intermedio
-        else:
-            battery_level = 0  # Bajo
-        
-        # Evitar notificaciones repetidas
+        # 4. Filtro de repetidos
         if battery_level == self.last_battery_level:
             return False
-        
-        # Actualizar estado
+            
         self.last_battery_level = battery_level
         
-        # Enviar notificación
+        # 5. Notificar
         try:
             self.ble.gatts_notify(
-                self.conn_handle,
-                self.battery_handle,
-                struct.pack('B', battery_level)
+                self.conn_handle, 
+                self.battery_handle, 
+                struct.pack('<B', battery_level)
             )
             return True
-        except Exception as e:
-            print(f"Error battery notify: {e}")
+        except:
+            return False
     
     def _irq(self, event, data):
         if event == 1: # CONNECT
             self.conn_handle, _, _ = data
+            self.last_battery_level = None
             print("BLE Conectado")
         elif event == 2: # DISCONNECT
             self.conn_handle = None

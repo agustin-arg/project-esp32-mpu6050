@@ -63,18 +63,21 @@ class PostureApp:
         print(f"Sistema iniciado. Chequeo de batería cada {self.battery_check_interval/1000}s")
         last_notified_state = None
 
+        #Notifica la batería una vez
+        volts_inicial = self.battery.read_voltage()
+        self.ble.notify_battery(volts_inicial)
+        
         while True:
             now = utime.ticks_ms()
 
-            # --- GESTIÓN DE BATERÍA ---
+           # --- GESTIÓN DE BATERÍA ---
             if utime.ticks_diff(now, self.last_battery_check) > self.battery_check_interval:
-                # Si la batería está crítica, esta función NO retorna (entra en deepsleep)
-                # Al ser cada 5 minutos, el impacto en rendimiento es despreciable
+                # 1. Revisar hardware y obtener voltaje
                 volts = self.battery.check_and_handle_low_battery(self.actuators)
+                print("Voltaje es de ", volts)
                 
-                # Notificar nivel de batería por BLE (solo si hay conexión)
-                if self.ble.conn_handle:
-                    self.ble.notify_battery(volts)
+                # 2. Notificar al servicio BLE
+                self.ble.notify_battery(volts)
                 
                 self.last_battery_check = now
 
